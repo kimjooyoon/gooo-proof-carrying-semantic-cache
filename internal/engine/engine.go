@@ -59,7 +59,7 @@ func RunConformance(options Options) (protocol.ConformanceReport, error) {
 		byID[fixture.ID] = fixture
 	}
 	var report protocol.ConformanceReport
-	report.Schema = "gooo/proof-carrying-semantic-cache/conformance/v1"
+	report.Schema = "gooo-proof-carrying-semantic-cache/conformance/v1"
 	report.ContractDigest = contractDigest
 	report.CorpusDigest = corpusDigest
 	report.Authority = policy.AuthorityRule
