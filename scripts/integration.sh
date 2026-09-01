@@ -18,7 +18,7 @@ for source in "$conformance"/*/generated/main.go; do
   mkdir -p "$build_dir"
   cp "$source" "$build_dir/main.go"
   printf 'module generated-%s\n\ngo 1.27.0\n' "$case_id" > "$build_dir/go.mod"
-  go build -trimpath -o "$build_dir/program" "$build_dir"
+  (cd "$build_dir" && go build -trimpath -o program .)
   actual=$("$build_dir/program")
   test "$actual" = "$expected"
   jq -n --arg id "$case_id" --arg output "$actual" '{case_id:$id,status:"CLOSED",output:$output}' > "$build_dir/integration.json"
