@@ -8,12 +8,13 @@ fi
 
 repo_root=$1
 output=$2
-conformance=$3
+conformance_report=$3
 compile=$4
 build=$5
 test_stage=$6
 conformance_stage=$7
 integration=$8
+conformance_root=$(dirname "$conformance_report")
 
 sum_lines() {
   local extension=$1
@@ -39,8 +40,8 @@ go_lines=$(sum_lines '*.go')
 gooo_lines=$(sum_lines '*.gooo')
 regular_files=$(find "$repo_root" -type f ! -path "$repo_root/.git/*" ! -name README.md -print | wc -l | tr -d ' ')
 descendant_dirs=$(find "$repo_root" -mindepth 1 -type d ! -path "$repo_root/.git" ! -path "$repo_root/.git/*" -print | wc -l | tr -d ' ')
-generated_files=$(find "$conformance" -type f -path '*/generated/*.go' -print | wc -l | tr -d ' ')
-generated_bytes=$(find "$conformance" -type f -path '*/generated/*.go' -exec wc -c {} + | awk 'END {print $1 + 0}')
+generated_files=$(find "$conformance_root" -type f -path '*/generated/*.go' -print | wc -l | tr -d ' ')
+generated_bytes=$(find "$conformance_root" -type f -path '*/generated/*.go' -exec wc -c {} + | awk 'END {print $1 + 0}')
 repository_writes=$(git -C "$repo_root" status --porcelain=v1 | wc -l | tr -d ' ')
 toolchain=$(go env GOVERSION)
 runner_material="${RUNNER_OS:-unknown}|${RUNNER_ARCH:-unknown}|${ImageOS:-unknown}|${ImageVersion:-unknown}"
@@ -56,7 +57,7 @@ jq -n \
   --argjson repository_writes "$repository_writes" \
   --argjson compile "$(read_stage "$compile")" --argjson build "$(read_stage "$build")" \
   --argjson test_stage "$(read_stage "$test_stage")" --argjson conformance_stage "$(read_stage "$conformance_stage")" \
-  --argjson integration "$(read_stage "$integration")" --slurpfile report "$conformance" \
+  --argjson integration "$(read_stage "$integration")" --slurpfile report "$conformance_report" \
   '{schema:$schema,verification_authority:"GITHUB_ACTIONS",go_version:$go_version,runner_digest:$runner_digest,
     root_readme_excluded:true,repository_writes:$repository_writes,
     inventory:{go_files:$go_files,gooo_files:$gooo_files,go_physical_lines:$go_lines,gooo_physical_lines:$gooo_lines,descendant_dirs:$descendant_dirs,regular_files:$regular_files},
