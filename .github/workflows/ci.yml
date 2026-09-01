@@ -19,7 +19,6 @@ jobs:
     runs-on: ubuntu-24.04
     env:
       SUBJECT_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-      EVIDENCE_ROOT: ${{ runner.temp }}/gooo-proof-carrying-semantic-cache
     steps:
       - name: Checkout exact subject
         uses: actions/checkout@v5
@@ -41,6 +40,7 @@ jobs:
           test "$(go env GOOS)" = "linux"
           test "$(go env GOARCH)" = "amd64"
           test "$(git ls-files 'README.md' | wc -l | tr -d ' ')" = 1
+          echo "EVIDENCE_ROOT=$RUNNER_TEMP/gooo-proof-carrying-semantic-cache" >> "$GITHUB_ENV"
           mkdir -p "$EVIDENCE_ROOT"
 
       - name: Verify formatting without modifying checkout
