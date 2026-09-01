@@ -1,0 +1,135 @@
+name: proof-carrying semantic cache CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: proof-carrying-semantic-cache-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    env:
+      SUBJECT_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      EVIDENCE_ROOT: ${{ runner.temp }}/gooo-proof-carrying-semantic-cache
+    steps:
+      - name: Checkout exact subject
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ env.SUBJECT_SHA }}
+          fetch-depth: 0
+
+      - name: Install Go 1.27
+        uses: actions/setup-go@v6
+        with:
+          go-version: 1.27.0
+          cache: false
+
+      - name: Verify toolchain and source boundary
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$(go env GOVERSION)" = "go1.27.0"
+          test "$(go env GOOS)" = "linux"
+          test "$(go env GOARCH)" = "amd64"
+          test "$(git ls-files 'README.md' | wc -l | tr -d ' ')" = 1
+          mkdir -p "$EVIDENCE_ROOT"
+
+      - name: Verify formatting without modifying checkout
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          files=$(git ls-files '*.go')
+          test -z "$(gofmt -l $files)"
+
+      - name: Run semantic audit
+        run: ./scripts/semantic-audit.sh
+
+      - name: Measure compile stage
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          ./scripts/measure-command.sh "$EVIDENCE_ROOT/compile.json" compile "$EVIDENCE_ROOT/compile.log" \
+            go test -run '^$' ./...
+
+      - name: Measure build stage
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          ./scripts/measure-command.sh "$EVIDENCE_ROOT/build.json" build "$EVIDENCE_ROOT/build.log" \
+            go build -trimpath -o "$EVIDENCE_ROOT/gooo-proof-carrying-semantic-cache" ./cmd/gooo-proof-carrying-semantic-cache
+
+      - name: Run Go vet
+        run: go vet ./...
+
+      - name: Measure test stage
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          ./scripts/measure-command.sh "$EVIDENCE_ROOT/test.json" test "$EVIDENCE_ROOT/test.log" \
+            go test -json -count=1 ./...
+
+      - name: Measure fixed conformance stage
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          ./scripts/measure-command.sh "$EVIDENCE_ROOT/conformance-stage.json" conformance "$EVIDENCE_ROOT/conformance.log" \
+            ./scripts/conformance.sh "$GITHUB_WORKSPACE" "$EVIDENCE_ROOT/gooo-proof-carrying-semantic-cache" "$EVIDENCE_ROOT/conformance"
+
+      - name: Measure generated artifact integration stage
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          ./scripts/measure-command.sh "$EVIDENCE_ROOT/integration.json" integration "$EVIDENCE_ROOT/integration.log" \
+            ./scripts/integration.sh "$EVIDENCE_ROOT/conformance/cases" "$EVIDENCE_ROOT/integration-output"
+
+      - name: Write exact CI evidence
+        if: always()
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          if [[ -f "$EVIDENCE_ROOT/conformance/cases/conformance.json" ]]; then
+            ./scripts/ci-metrics.sh "$GITHUB_WORKSPACE" "$EVIDENCE_ROOT/ci-metrics.json" \
+              "$EVIDENCE_ROOT/conformance/cases/conformance.json" \
+              "$EVIDENCE_ROOT/compile.json" "$EVIDENCE_ROOT/build.json" "$EVIDENCE_ROOT/test.json" \
+              "$EVIDENCE_ROOT/conformance-stage.json" "$EVIDENCE_ROOT/integration.json"
+            jq -e '
+              .schema == "gooo-proof-carrying-semantic-cache/ci-evidence/v1" and
+              .verification_authority == "GITHUB_ACTIONS" and .root_readme_excluded == true and
+              (.inventory.go_files|type) == "number" and (.inventory.gooo_files|type) == "number" and
+              (.inventory.go_physical_lines|type) == "number" and (.inventory.gooo_physical_lines|type) == "number" and
+              (.inventory.descendant_dirs|type) == "number" and (.inventory.regular_files|type) == "number" and
+              (.generated.files|type) == "number" and (.generated.bytes|type) == "number" and
+              (all(.stages[]; ((.wall_ms|type) == "number" and (.peak_rss_kib|type) == "number"))) and
+              .tests == {total:7,selected:7,executed:4,reused:3,failed:2,unknown:2} and
+              .repository_writes == 0 and .authority.local_test_executions == 0 and
+              .authority.cross_project_required_gates == 0 and
+              ([.exact_pair_vectors[] | select(.decision == "CLOSED") | .pair.exact_pair] | all)
+            ' "$EVIDENCE_ROOT/ci-metrics.json" >/dev/null
+          fi
+
+      - name: Publish step summary
+        if: always()
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          if [[ -f "$EVIDENCE_ROOT/conformance/cases/conformance.json" ]]; then
+            jq -r '"decision=\(.decision) cases=\(.summary.total_cases) closed=\(.summary.closed) unknown=\(.summary.unknown) refuted=\(.summary.refuted)","tests total/selected/executed/reused/failed/unknown=\(.summary.tests_total)/\(.summary.tests_selected)/\(.summary.tests_executed)/\(.summary.tests_reused)/\(.summary.tests_failed)/\(.summary.tests_unknown)"' "$EVIDENCE_ROOT/conformance/cases/conformance.json" >> "$GITHUB_STEP_SUMMARY"
+            jq -r '"ci metrics: \(.inventory.go_files) Go files, \(.inventory.gooo_files) Gooo files, generated \(.generated.files) files/\(.generated.bytes) bytes, repository_writes=\(.repository_writes)"' "$EVIDENCE_ROOT/ci-metrics.json" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload exact evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gooo-proof-carrying-semantic-cache-evidence-${{ github.run_id }}
+          path: ${{ runner.temp }}/gooo-proof-carrying-semantic-cache
+          if-no-files-found: error

@@ -1,0 +1,15 @@
+{
+  "schema": "gooo/proof-carrying-semantic-cache/metrics/v1",
+  "authority": "metacode",
+  "inventory_excludes": ["README.md", ".git"],
+  "integer_fields": [
+    "go_files", "gooo_files", "go_physical_lines", "gooo_physical_lines", "descendant_dirs", "regular_files",
+    "generated_files", "generated_bytes", "wall_ms", "peak_rss_kib",
+    "tests_total", "tests_selected", "tests_executed", "tests_reused", "tests_failed", "tests_unknown"
+  ],
+  "pair_vectors": ["tests_executed", "tests_reused", "wall_ms", "peak_rss_kib"],
+  "improvement_basis": "exact scenario/source/contract/toolchain/runner pair",
+  "repository_writes": 0,
+  "local_test_executions": 0,
+  "cross_project_required_gates": 0
+}

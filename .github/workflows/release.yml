@@ -1,0 +1,147 @@
+name: immutable proof-carrying semantic cache release
+
+on:
+  workflow_dispatch:
+    inputs:
+      expected_sha:
+        description: Exact merged main commit to release
+        required: true
+        type: string
+      release_version:
+        description: New unused 0.x.y version; failed tags/releases are never reused
+        required: true
+        default: 0.1.0
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    env:
+      EXPECTED_SHA: ${{ inputs.expected_sha }}
+      RELEASE_VERSION: ${{ inputs.release_version }}
+      GH_TOKEN: ${{ github.token }}
+      EVIDENCE_ROOT: ${{ runner.temp }}/gooo-proof-carrying-semantic-cache-release
+    steps:
+      - name: Checkout exact merged commit
+        uses: actions/checkout@v5
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Install Go 1.27
+        uses: actions/setup-go@v6
+        with:
+          go-version: 1.27.0
+          cache: false
+
+      - name: Bind immutable release and refuse reuse
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          case "$RELEASE_VERSION" in
+            0.*.*) ;;
+            *) echo 'release_version must be 0.x.y' >&2; exit 1 ;;
+          esac
+          RELEASE_TAG="v$RELEASE_VERSION"
+          echo "RELEASE_TAG=$RELEASE_TAG" >> "$GITHUB_ENV"
+          if git ls-remote --exit-code --tags origin "refs/tags/$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "refusing to reuse existing tag $RELEASE_TAG" >&2
+            exit 1
+          fi
+          if gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "refusing to reuse existing release $RELEASE_TAG" >&2
+            exit 1
+          fi
+
+      - name: Verify immutable releases setting through user API
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          settings=$(gh api "repos/$GITHUB_REPOSITORY/immutable-releases")
+          jq -e '.enabled == true' <<<"$settings" >/dev/null
+          echo "immutable_setting_enabled=true" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Re-run semantic audit and CI evidence on release subject
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -p "$EVIDENCE_ROOT"
+          test -z "$(gofmt -l $(git ls-files '*.go'))"
+          ./scripts/semantic-audit.sh
+          go vet ./...
+          go build -trimpath -o "$EVIDENCE_ROOT/gooo-proof-carrying-semantic-cache" ./cmd/gooo-proof-carrying-semantic-cache
+          ./scripts/conformance.sh "$GITHUB_WORKSPACE" "$EVIDENCE_ROOT/gooo-proof-carrying-semantic-cache" "$EVIDENCE_ROOT/conformance"
+          ./scripts/integration.sh "$EVIDENCE_ROOT/conformance/cases" "$EVIDENCE_ROOT/integration"
+
+      - name: Create annotated tag exactly once
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git tag -a "$RELEASE_TAG" "$EXPECTED_SHA" -m "gooo-proof-carrying-semantic-cache $RELEASE_TAG"
+          git push origin "refs/tags/$RELEASE_TAG"
+          tag_ref=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$RELEASE_TAG")
+          test "$(jq -r '.object.type' <<<"$tag_ref")" = tag
+          tag_object_sha=$(jq -r '.object.sha' <<<"$tag_ref")
+          tag_body=$(gh api "repos/$GITHUB_REPOSITORY/git/tags/$tag_object_sha")
+          jq -e --arg expected "$EXPECTED_SHA" '.object.type == "commit" and .object.sha == $expected' <<<"$tag_body" >/dev/null
+          echo "TAG_OBJECT_SHA=$tag_object_sha" >> "$GITHUB_ENV"
+
+      - name: Assemble digest-bound release assets
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          release_dir="$EVIDENCE_ROOT/release"
+          mkdir -p "$release_dir"
+          source_asset="gooo-proof-carrying-semantic-cache-source-$RELEASE_TAG.tar.gz"
+          evidence_asset="gooo-proof-carrying-semantic-cache-evidence-$RELEASE_TAG.tar.gz"
+          git archive --format=tar.gz --prefix="gooo-proof-carrying-semantic-cache-$RELEASE_TAG/" "$EXPECTED_SHA" > "$release_dir/$source_asset"
+          tar -czf "$release_dir/$evidence_asset" -C "$EVIDENCE_ROOT" conformance integration
+          source_digest="sha256:$(sha256sum "$release_dir/$source_asset" | awk '{print $1}')"
+          evidence_digest="sha256:$(sha256sum "$release_dir/$evidence_asset" | awk '{print $1}')"
+          jq -S -n \
+            --arg schema "gooo-proof-carrying-semantic-cache/release-manifest/v1" \
+            --arg tag "$RELEASE_TAG" --arg commit "$EXPECTED_SHA" --arg tag_object "$TAG_OBJECT_SHA" \
+            --arg source_name "$source_asset" --arg source_digest "$source_digest" --arg evidence_name "$evidence_asset" --arg evidence_digest "$evidence_digest" \
+            '{schema:$schema,tag:$tag,commit_sha:$commit,annotated_tag_object_sha:$tag_object,immutable:true,assets:[{name:$source_name,digest:$source_digest},{name:$evidence_name,digest:$evidence_digest}],authority:{repository_writes:0,local_test_executions:0,cross_project_required_gates:0}}' \
+            > "$release_dir/release-manifest.json"
+          (cd "$release_dir" && sha256sum "$source_asset" "$evidence_asset" release-manifest.json > SHA256SUMS)
+          cat "$release_dir/release-manifest.json" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Publish immutable release exactly once
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          gh release create "$RELEASE_TAG" --verify-tag --title "gooo-proof-carrying-semantic-cache $RELEASE_TAG" \
+            --notes "Immutable evidence-bound release for annotated tag object $TAG_OBJECT_SHA." \
+            "$EVIDENCE_ROOT/release/gooo-proof-carrying-semantic-cache-source-$RELEASE_TAG.tar.gz" \
+            "$EVIDENCE_ROOT/release/gooo-proof-carrying-semantic-cache-evidence-$RELEASE_TAG.tar.gz" \
+            "$EVIDENCE_ROOT/release/release-manifest.json" "$EVIDENCE_ROOT/release/SHA256SUMS"
+
+      - name: Verify immutable release and asset digests through public API
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          release_json=$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG")
+          jq -e --arg tag "$RELEASE_TAG" --arg commit "$EXPECTED_SHA" --arg tag_object "$TAG_OBJECT_SHA" \
+            '.draft == false and .prerelease == false and .immutable == true and .tag_name == $tag and .target_commitish != ""' <<<"$release_json" >/dev/null
+          test "$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$RELEASE_TAG" --jq '.object.type')" = tag
+          test "$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$RELEASE_TAG" --jq '.object.sha')" = "$TAG_OBJECT_SHA"
+          jq -e --arg source "$(sha256sum "$EVIDENCE_ROOT/release/gooo-proof-carrying-semantic-cache-source-$RELEASE_TAG.tar.gz" | awk '{print "sha256:" $1}')" \
+            --arg evidence "$(sha256sum "$EVIDENCE_ROOT/release/gooo-proof-carrying-semantic-cache-evidence-$RELEASE_TAG.tar.gz" | awk '{print "sha256:" $1}')" \
+            '[.assets[] | select(.name | startswith("gooo-proof-carrying-semantic-cache-source-")) | .digest] == [$source] and [.assets[] | select(.name | startswith("gooo-proof-carrying-semantic-cache-evidence-")) | .digest] == [$evidence]' <<<"$release_json" >/dev/null
+          jq -r '"release=\(.html_url) immutable=\(.immutable) assets=\(.assets|length)"' <<<"$release_json" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload release evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gooo-proof-carrying-semantic-cache-release-evidence-${{ github.run_id }}
+          path: ${{ runner.temp }}/gooo-proof-carrying-semantic-cache-release
+          if-no-files-found: error

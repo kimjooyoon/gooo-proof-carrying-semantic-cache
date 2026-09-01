@@ -1,0 +1,9 @@
+{
+  "schema": "gooo/proof-carrying-semantic-cache/denominator/v1",
+  "authority": "metacode",
+  "id": "proof-carrying-semantic-cache-v1",
+  "fixed_cases": 7,
+  "precedence": ["REFUTED", "UNKNOWN", "CLOSED"],
+  "unknown_fields": ["stage", "step", "reason", "unknown_class", "next_operation", "blocked_by"],
+  "required_gate": 0
+}

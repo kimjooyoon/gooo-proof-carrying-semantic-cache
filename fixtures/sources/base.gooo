@@ -1,0 +1,2 @@
+program "proof-cache"
+terminal reason "PASS" effect "ARTIFACT:proof-cache"

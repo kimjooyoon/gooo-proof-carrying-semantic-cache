@@ -1,0 +1,4 @@
+// This comment is intentionally non-semantic.
+program   "proof-cache"  // spacing and comments do not change the semantic key
+
+terminal reason "PASS" effect "ARTIFACT:proof-cache"

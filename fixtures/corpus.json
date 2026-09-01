@@ -1,0 +1,13 @@
+{
+  "schema": "gooo/proof-carrying-semantic-cache/fixture-corpus/v1",
+  "corpus_id": "proof-carrying-semantic-cache-cases-v1",
+  "cases": [
+    {"id":"exact-proof-hit","test_id":"test-exact-proof-hit","origin":"fixtures/sources/exact.gooo","dependencies":[{"name":"foundation","digest":"sha256:foundation-v1"}],"cache_proof_present":true},
+    {"id":"comment-only-semantic-hit","test_id":"test-comment-only-semantic-hit","origin":"fixtures/sources/base.gooo","dependencies":[{"name":"foundation","digest":"sha256:foundation-v1"}],"cache_proof_present":true},
+    {"id":"transitive-dependency-change","test_id":"test-transitive-dependency-change","origin":"fixtures/sources/exact.gooo","dependencies":[{"name":"foundation","digest":"sha256:foundation-v2"},{"name":"leaf","digest":"sha256:leaf-v1"}],"cache_dependencies":[{"name":"foundation","digest":"sha256:foundation-v1"},{"name":"leaf","digest":"sha256:leaf-v1"}],"cache_proof_present":true},
+    {"id":"stale-terminal-witness","test_id":"test-stale-terminal-witness","origin":"fixtures/sources/exact.gooo","dependencies":[{"name":"foundation","digest":"sha256:foundation-v1"}],"cache_proof_present":true,"cache_terminal_reason":"FAIL"},
+    {"id":"missing-proof","test_id":"test-missing-proof","origin":"fixtures/sources/exact.gooo","dependencies":[{"name":"foundation","digest":"sha256:foundation-v1"}],"cache_proof_present":false},
+    {"id":"cross-toolchain","test_id":"test-cross-toolchain","origin":"fixtures/sources/exact.gooo","dependencies":[{"name":"foundation","digest":"sha256:foundation-v1"}],"cache_proof_present":true,"cache_toolchain":"sha256:cross-toolchain-old"},
+    {"id":"replay","test_id":"test-replay","origin":"fixtures/sources/exact.gooo","dependencies":[{"name":"foundation","digest":"sha256:foundation-v1"}],"cache_proof_present":true}
+  ]
+}
