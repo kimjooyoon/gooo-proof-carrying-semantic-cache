@@ -1,6 +1,6 @@
 name: proof-carrying semantic cache CI
 
-on:
+"on":
   pull_request:
   push:
     branches: [main]
@@ -19,7 +19,6 @@ jobs:
     runs-on: ubuntu-24.04
     env:
       SUBJECT_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-      EVIDENCE_ROOT: ${{ runner.temp }}/gooo-proof-carrying-semantic-cache
     steps:
       - name: Checkout exact subject
         uses: actions/checkout@v5
@@ -41,6 +40,8 @@ jobs:
           test "$(go env GOOS)" = "linux"
           test "$(go env GOARCH)" = "amd64"
           test "$(git ls-files 'README.md' | wc -l | tr -d ' ')" = 1
+          EVIDENCE_ROOT="$RUNNER_TEMP/gooo-proof-carrying-semantic-cache"
+          echo "EVIDENCE_ROOT=$EVIDENCE_ROOT" >> "$GITHUB_ENV"
           mkdir -p "$EVIDENCE_ROOT"
 
       - name: Verify formatting without modifying checkout
@@ -96,7 +97,7 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          if [[ -f "$EVIDENCE_ROOT/conformance/cases/conformance.json" ]]; then
+          if [[ -f "$EVIDENCE_ROOT/conformance/cases/conformance.json" && -f "$EVIDENCE_ROOT/integration.json" ]]; then
             ./scripts/ci-metrics.sh "$GITHUB_WORKSPACE" "$EVIDENCE_ROOT/ci-metrics.json" \
               "$EVIDENCE_ROOT/conformance/cases/conformance.json" \
               "$EVIDENCE_ROOT/compile.json" "$EVIDENCE_ROOT/build.json" "$EVIDENCE_ROOT/test.json" \
@@ -121,7 +122,7 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          if [[ -f "$EVIDENCE_ROOT/conformance/cases/conformance.json" ]]; then
+          if [[ -f "$EVIDENCE_ROOT/conformance/cases/conformance.json" && -f "$EVIDENCE_ROOT/ci-metrics.json" ]]; then
             jq -r '"decision=\(.decision) cases=\(.summary.total_cases) closed=\(.summary.closed) unknown=\(.summary.unknown) refuted=\(.summary.refuted)","tests total/selected/executed/reused/failed/unknown=\(.summary.tests_total)/\(.summary.tests_selected)/\(.summary.tests_executed)/\(.summary.tests_reused)/\(.summary.tests_failed)/\(.summary.tests_unknown)"' "$EVIDENCE_ROOT/conformance/cases/conformance.json" >> "$GITHUB_STEP_SUMMARY"
             jq -r '"ci metrics: \(.inventory.go_files) Go files, \(.inventory.gooo_files) Gooo files, generated \(.generated.files) files/\(.generated.bytes) bytes, repository_writes=\(.repository_writes)"' "$EVIDENCE_ROOT/ci-metrics.json" >> "$GITHUB_STEP_SUMMARY"
           fi
