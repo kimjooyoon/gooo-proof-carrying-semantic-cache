@@ -40,7 +40,7 @@ if ! jq -e '
   ([.cases[] | select(.improvement.status == "CLOSED") | .improvement.exact_pair] | all) and
   ([.. | objects | keys[]? | select(test("score|percentage|average|estimate"; "i"))] | length) == 0
 ' "$output/cases/conformance.json" >/dev/null; then
-  jq -c '{summary,authority,cases:map({id,expected,decision,rebuild_performed,unknowns,refutations,improvement,replay})}' "$output/cases/conformance.json"
+  jq -c '{summary,authority,cases:(.cases|map({id,expected,decision,rebuild_performed,unknowns,refutations,improvement,replay}))}' "$output/cases/conformance.json"
   exit 1
 fi
 
