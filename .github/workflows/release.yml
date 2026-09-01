@@ -1,6 +1,6 @@
 name: immutable proof-carrying semantic cache release
 
-on:
+"on":
   workflow_dispatch:
     inputs:
       expected_sha:
