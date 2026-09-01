@@ -97,7 +97,7 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          if [[ -f "$EVIDENCE_ROOT/conformance/cases/conformance.json" ]]; then
+          if [[ -f "$EVIDENCE_ROOT/conformance/cases/conformance.json" && -f "$EVIDENCE_ROOT/integration.json" ]]; then
             ./scripts/ci-metrics.sh "$GITHUB_WORKSPACE" "$EVIDENCE_ROOT/ci-metrics.json" \
               "$EVIDENCE_ROOT/conformance/cases/conformance.json" \
               "$EVIDENCE_ROOT/compile.json" "$EVIDENCE_ROOT/build.json" "$EVIDENCE_ROOT/test.json" \

@@ -23,7 +23,7 @@ runner_digest="sha256:$(printf '%s' "$runner_material" | sha256sum | awk '{print
   --toolchain "$toolchain" \
   --runner-digest "$runner_digest"
 
-jq -e '
+if ! jq -e '
   .schema == "gooo-proof-carrying-semantic-cache/conformance/v1" and
   .decision == "CLOSED" and
   .summary == {total_cases:7,closed:3,unknown:2,refuted:2,tests_total:7,tests_selected:7,tests_executed:4,tests_reused:3,tests_failed:2,tests_unknown:2} and
@@ -39,7 +39,10 @@ jq -e '
   ([.cases[] | select(.decision == "UNKNOWN") | .unknowns[] | (.stage != "" and .step != "" and .reason != "" and .unknown_class != "" and .next_operation != "" and (.blocked_by|length) > 0)] | all) and
   ([.cases[] | select(.improvement.status == "CLOSED") | .improvement.exact_pair] | all) and
   ([.. | objects | keys[]? | select(test("score|percentage|average|estimate"; "i"))] | length) == 0
-' "$output/cases/conformance.json" >/dev/null
+' "$output/cases/conformance.json" >/dev/null; then
+  jq -c '{summary,authority,cases:map({id,expected,decision,rebuild_performed,unknowns,refutations,improvement,replay})}' "$output/cases/conformance.json"
+  exit 1
+fi
 
 after=$(git -C "$repository" status --porcelain=v1 -z --untracked-files=all | sha256sum | awk '{print $1}')
 test "$before" = "$after"
