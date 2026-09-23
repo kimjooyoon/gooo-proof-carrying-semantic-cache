@@ -32,6 +32,10 @@ func ParsePolicy(text string) (Policy, error) {
 	lineNo := 0
 	inside := false
 	seenHeader := false
+	seenRecord := map[string]bool{}
+	seenBindings := map[string]bool{}
+	seenObligations := map[string]bool{}
+	seenFallbacks := map[string]bool{}
 	for scanner.Scan() {
 		lineNo++
 		line := stripMetaComment(scanner.Text())
@@ -65,11 +69,19 @@ func ParsePolicy(text string) (Policy, error) {
 		}
 		switch tokens[0] {
 		case "authority":
+			if seenRecord[tokens[0]] {
+				return Policy{}, fmt.Errorf("line %d: duplicate contract record %q", lineNo, tokens[0])
+			}
+			seenRecord[tokens[0]] = true
 			if len(tokens) != 2 {
 				return Policy{}, fmt.Errorf("line %d: authority requires one value", lineNo)
 			}
 			policy.Authority = tokens[1]
 		case "precedence":
+			if seenRecord[tokens[0]] {
+				return Policy{}, fmt.Errorf("line %d: duplicate contract record %q", lineNo, tokens[0])
+			}
+			seenRecord[tokens[0]] = true
 			if len(tokens) < 2 {
 				return Policy{}, fmt.Errorf("line %d: precedence is empty", lineNo)
 			}
@@ -77,8 +89,16 @@ func ParsePolicy(text string) (Policy, error) {
 				policy.Precedence = append(policy.Precedence, Decision(token))
 			}
 		case "unknown_fields":
+			if seenRecord[tokens[0]] {
+				return Policy{}, fmt.Errorf("line %d: duplicate contract record %q", lineNo, tokens[0])
+			}
+			seenRecord[tokens[0]] = true
 			policy.UnknownFields = append([]string(nil), tokens[1:]...)
 		case "denominator":
+			if seenRecord[tokens[0]] {
+				return Policy{}, fmt.Errorf("line %d: duplicate contract record %q", lineNo, tokens[0])
+			}
+			seenRecord[tokens[0]] = true
 			pairs, err := pairsAfter(tokens, 2)
 			if err != nil {
 				return Policy{}, fmt.Errorf("line %d: %w", lineNo, err)
@@ -89,6 +109,10 @@ func ParsePolicy(text string) (Policy, error) {
 				return Policy{}, fmt.Errorf("line %d: malformed denominator count", lineNo)
 			}
 		case "normalization":
+			if seenRecord[tokens[0]] {
+				return Policy{}, fmt.Errorf("line %d: duplicate contract record %q", lineNo, tokens[0])
+			}
+			seenRecord[tokens[0]] = true
 			pairs, err := pairsAfter(tokens, 1)
 			if err != nil {
 				return Policy{}, fmt.Errorf("line %d: %w", lineNo, err)
@@ -97,6 +121,10 @@ func ParsePolicy(text string) (Policy, error) {
 				policy.Normalization[key] = value
 			}
 		case "cache_key":
+			if seenRecord[tokens[0]] {
+				return Policy{}, fmt.Errorf("line %d: duplicate contract record %q", lineNo, tokens[0])
+			}
+			seenRecord[tokens[0]] = true
 			pairs, err := pairsAfter(tokens, 1)
 			if err != nil {
 				return Policy{}, fmt.Errorf("line %d: %w", lineNo, err)
@@ -112,6 +140,10 @@ func ParsePolicy(text string) (Policy, error) {
 			if err != nil {
 				return Policy{}, fmt.Errorf("line %d: %w", lineNo, err)
 			}
+			if seenBindings[tokens[1]] {
+				return Policy{}, fmt.Errorf("line %d: duplicate binding %q", lineNo, tokens[1])
+			}
+			seenBindings[tokens[1]] = true
 			policy.Bindings = append(policy.Bindings, BindingRule{
 				Kind: tokens[1], Stage: pairs["stage"], Step: pairs["step"],
 				Mismatch: Decision(pairs["mismatch"]), UnknownClass: pairs["unknown_class"],
@@ -124,11 +156,19 @@ func ParsePolicy(text string) (Policy, error) {
 			if err != nil {
 				return Policy{}, fmt.Errorf("line %d: %w", lineNo, err)
 			}
+			if seenObligations[tokens[1]] {
+				return Policy{}, fmt.Errorf("line %d: duplicate obligation %q", lineNo, tokens[1])
+			}
+			seenObligations[tokens[1]] = true
 			policy.Obligations = append(policy.Obligations, ProofObligation{
 				ID: tokens[1], Stage: pairs["stage"], Step: pairs["step"],
 				Proof: pairs["proof"], Missing: pairs["missing"],
 			})
 		case "witness":
+			if seenRecord[tokens[0]] {
+				return Policy{}, fmt.Errorf("line %d: duplicate contract record %q", lineNo, tokens[0])
+			}
+			seenRecord[tokens[0]] = true
 			if len(tokens) < 3 {
 				return Policy{}, fmt.Errorf("line %d: witness kind is required", lineNo)
 			}
@@ -138,6 +178,10 @@ func ParsePolicy(text string) (Policy, error) {
 			}
 			policy.Witness = WitnessRule{Kind: tokens[1], Stage: pairs["stage"], Step: pairs["step"], Reason: pairs["reason"], Effect: pairs["effect"], Mismatch: Decision(pairs["mismatch"])}
 		case "reuse":
+			if seenRecord[tokens[0]] {
+				return Policy{}, fmt.Errorf("line %d: duplicate contract record %q", lineNo, tokens[0])
+			}
+			seenRecord[tokens[0]] = true
 			pairs, err := pairsAfter(tokens, 1)
 			if err != nil {
 				return Policy{}, fmt.Errorf("line %d: %w", lineNo, err)
@@ -151,14 +195,27 @@ func ParsePolicy(text string) (Policy, error) {
 			if pairs["status"] == "" || pairs["operation"] == "" || pairs["unknown_class"] == "" {
 				return Policy{}, fmt.Errorf("line %d: fallback declaration is incomplete", lineNo)
 			}
-			policy.Fallback[Decision(pairs["status"])] = pairs["operation"]
+			status := Decision(pairs["status"])
+			if seenFallbacks[pairs["status"]] {
+				return Policy{}, fmt.Errorf("line %d: duplicate fallback status %q", lineNo, status)
+			}
+			seenFallbacks[pairs["status"]] = true
+			policy.Fallback[status] = pairs["operation"]
 		case "replay":
+			if seenRecord[tokens[0]] {
+				return Policy{}, fmt.Errorf("line %d: duplicate contract record %q", lineNo, tokens[0])
+			}
+			seenRecord[tokens[0]] = true
 			pairs, err := pairsAfter(tokens, 1)
 			if err != nil {
 				return Policy{}, fmt.Errorf("line %d: %w", lineNo, err)
 			}
 			policy.Replay = PolicyRule{Name: pairs["rule"], Status: Decision(pairs["status"]), Requires: pairs["requires"]}
 		case "metrics":
+			if seenRecord[tokens[0]] {
+				return Policy{}, fmt.Errorf("line %d: duplicate contract record %q", lineNo, tokens[0])
+			}
+			seenRecord[tokens[0]] = true
 			pairs, err := pairsAfter(tokens, 1)
 			if err != nil {
 				return Policy{}, fmt.Errorf("line %d: %w", lineNo, err)
@@ -168,6 +225,10 @@ func ParsePolicy(text string) (Policy, error) {
 			policy.Metrics.Improvement = pairs["improvement"]
 			policy.Metrics.Forbidden = splitCSV(pairs["forbidden"])
 		case "authority_rule":
+			if seenRecord[tokens[0]] {
+				return Policy{}, fmt.Errorf("line %d: duplicate contract record %q", lineNo, tokens[0])
+			}
+			seenRecord[tokens[0]] = true
 			pairs, err := pairsAfter(tokens, 1)
 			if err != nil {
 				return Policy{}, fmt.Errorf("line %d: %w", lineNo, err)
@@ -194,6 +255,10 @@ func ParsePolicy(text string) (Policy, error) {
 				return Policy{}, fmt.Errorf("line %d: malformed automatic_release", lineNo)
 			}
 		case "generation":
+			if seenRecord[tokens[0]] {
+				return Policy{}, fmt.Errorf("line %d: duplicate contract record %q", lineNo, tokens[0])
+			}
+			seenRecord[tokens[0]] = true
 			if len(tokens) < 2 {
 				return Policy{}, fmt.Errorf("line %d: generation language is required", lineNo)
 			}
