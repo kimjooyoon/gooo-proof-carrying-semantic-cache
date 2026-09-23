@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"strconv"
 	"strings"
@@ -281,6 +282,13 @@ func LoadCorpus(path string) (Corpus, string, error) {
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&corpus); err != nil {
 		return Corpus{}, "", fmt.Errorf("decode corpus: %w", err)
+	}
+	var trailing json.RawMessage
+	if err := decoder.Decode(&trailing); err != io.EOF {
+		if err == nil {
+			return Corpus{}, "", fmt.Errorf("decode corpus: trailing JSON value")
+		}
+		return Corpus{}, "", fmt.Errorf("decode corpus trailing data: %w", err)
 	}
 	if corpus.Schema == "" || len(corpus.Cases) == 0 {
 		return Corpus{}, "", fmt.Errorf("corpus is empty")
