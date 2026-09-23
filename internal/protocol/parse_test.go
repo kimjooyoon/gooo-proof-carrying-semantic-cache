@@ -44,3 +44,9 @@ func TestCorpusIsFixedAndExplicit(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestPairsAfterRejectsDuplicateKeysAfterEmptyValue(t *testing.T) {
+	if _, err := pairsAfter([]string{"cache_key", "semantic_key", "", "semantic_key", "later"}, 1); err == nil {
+		t.Fatal("pairsAfter accepted a duplicate key after an empty value")
+	}
+}
