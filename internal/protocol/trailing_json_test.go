@@ -16,4 +16,3 @@ func TestLoadCorpusRejectsTrailingJSONValue(t *testing.T) {
 		t.Fatal("LoadCorpus accepted a trailing JSON value")
 	}
 }
-
