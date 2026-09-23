@@ -147,8 +147,24 @@ func sourceTokens(line string) ([]string, error) {
 }
 
 func stripComment(line string) string {
-	if index := strings.Index(line, "//"); index >= 0 {
-		return line[:index]
+	inString := false
+	escaped := false
+	for index := 0; index < len(line); index++ {
+		if escaped {
+			escaped = false
+			continue
+		}
+		if inString && line[index] == '\\' {
+			escaped = true
+			continue
+		}
+		if line[index] == '"' {
+			inString = !inString
+			continue
+		}
+		if !inString && line[index] == '/' && index+1 < len(line) && line[index+1] == '/' {
+			return line[:index]
+		}
 	}
 	return line
 }

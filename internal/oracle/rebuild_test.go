@@ -37,3 +37,22 @@ func TestCommentsDoNotChangeSemanticKeyOrArtifact(t *testing.T) {
 		t.Fatalf("comment-only source did not converge: base=%s/%s commented=%s/%s", baseIR.SemanticKey, baseArtifact.Digest, commentedIR.SemanticKey, commentedArtifact.Digest)
 	}
 }
+
+func TestCommentMarkersInsideStringLiteralsRemainSemantic(t *testing.T) {
+	root, err := filepath.Abs(filepath.Join("..", ".."))
+	if err != nil {
+		t.Fatal(err)
+	}
+	policy, _, err := protocol.LoadPolicy(filepath.Join(root, ".gooo", "proof-cache.gooo"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw := []byte("program \"proof//cache\"\nterminal reason \"PASS//reason\" effect \"ARTIFACT:proof//cache\"\n")
+	ir, _, err := Rebuild("inline.gooo", raw, policy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ir.Program.Name != "proof//cache" || ir.Program.Reason != "PASS//reason" || ir.Program.Effect != "ARTIFACT:proof//cache" {
+		t.Fatalf("comment markers inside string literals were not preserved: %#v", ir.Program)
+	}
+}
